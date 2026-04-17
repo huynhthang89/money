@@ -1,0 +1,625 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Quản lý tài chính">
+<meta name="theme-color" content="#fafaf7">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E💰%3C/text%3E%3C/svg%3E">
+<title>Quản lý tài chính cá nhân</title>
+<style>
+  :root {
+    --color-background-primary: #ffffff;
+    --color-background-secondary: #f5f4ef;
+    --color-background-tertiary: #fafaf7;
+    --color-text-primary: #1a1a1a;
+    --color-text-secondary: #5f5e5a;
+    --color-text-tertiary: #888780;
+    --color-border-tertiary: rgba(0,0,0,0.12);
+    --color-border-secondary: rgba(0,0,0,0.22);
+    --border-radius-md: 8px;
+    --border-radius-lg: 12px;
+    --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --color-background-primary: #1a1a1a;
+      --color-background-secondary: #262624;
+      --color-background-tertiary: #1f1f1d;
+      --color-text-primary: #f0eee5;
+      --color-text-secondary: #b4b2a9;
+      --color-text-tertiary: #888780;
+      --color-border-tertiary: rgba(255,255,255,0.12);
+      --color-border-secondary: rgba(255,255,255,0.22);
+    }
+    body { background: #141413; }
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: var(--font-sans);
+    color: var(--color-text-primary);
+    background: var(--color-background-tertiary);
+    margin: 0;
+    padding: 1.5rem 1rem;
+    font-size: 15px;
+    line-height: 1.5;
+    -webkit-text-size-adjust: 100%;
+  }
+  .container { max-width: 720px; margin: 0 auto; }
+  .header-row {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 1.25rem; gap: 12px;
+  }
+  h1 { font-size: 20px; font-weight: 500; margin: 0; }
+  .refresh-btn {
+    font-size: 13px; padding: 8px 14px;
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  .refresh-btn.spinning::before {
+    content: '↻'; display: inline-block;
+    animation: spin 1s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  input, select, button { font-family: inherit; font-size: 14px; }
+  input[type="text"], input[type="number"], input[type="date"], select {
+    padding: 8px 12px;
+    border: 0.5px solid var(--color-border-tertiary);
+    border-radius: var(--border-radius-md);
+    background: var(--color-background-primary);
+    color: var(--color-text-primary);
+    height: 40px;
+  }
+  input:focus, select:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(100,130,200,0.3);
+    border-color: var(--color-border-secondary);
+  }
+  button {
+    background: transparent;
+    border: 0.5px solid var(--color-border-secondary);
+    border-radius: var(--border-radius-md);
+    padding: 8px 12px;
+    cursor: pointer;
+    color: var(--color-text-primary);
+    transition: background 0.1s;
+    -webkit-tap-highlight-color: transparent;
+  }
+  button:hover { background: var(--color-background-secondary); }
+  button:active { transform: scale(0.98); }
+  .queue-badge {
+    display: inline-block; background: #FAC775; color: #633806;
+    font-size: 11px; padding: 2px 8px; border-radius: 10px; margin-left: 6px;
+  }
+  .pull-banner {
+    background: var(--color-background-secondary);
+    border-radius: var(--border-radius-md);
+    padding: 10px 14px; margin-bottom: 12px;
+    font-size: 13px; color: var(--color-text-secondary);
+    display: flex; align-items: center; gap: 8px;
+  }
+  @media (max-width: 480px) {
+    body { padding: 1rem 0.75rem; }
+    h1 { font-size: 18px; }
+    .summary-grid { grid-template-columns: 1fr !important; }
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+
+  <div class="header-row">
+    <h1>Quản lý tài chính cá nhân</h1>
+    <button id="refresh-btn" class="refresh-btn" title="Làm mới dữ liệu từ Sheet">↻ Làm mới</button>
+  </div>
+
+  <div id="pull-banner" class="pull-banner" style="display:none;"></div>
+
+  <div style="display: flex; gap: 4px; margin-bottom: 1.25rem; border-bottom: 0.5px solid var(--color-border-tertiary); flex-wrap: wrap;">
+    <button id="tab-nhap" class="tab-btn" style="padding: 10px 14px; background: transparent; border: none; border-bottom: 2px solid var(--color-text-primary); font-size: 14px; font-weight: 500; cursor: pointer; color: var(--color-text-primary);">Nhập</button>
+    <button id="tab-lichsu" class="tab-btn" style="padding: 10px 14px; background: transparent; border: none; border-bottom: 2px solid transparent; font-size: 14px; font-weight: 400; cursor: pointer; color: var(--color-text-secondary);">Lịch sử</button>
+    <button id="tab-vi" class="tab-btn" style="padding: 10px 14px; background: transparent; border: none; border-bottom: 2px solid transparent; font-size: 14px; font-weight: 400; cursor: pointer; color: var(--color-text-secondary);">Ví</button>
+    <button id="tab-caidat" class="tab-btn" style="padding: 10px 14px; background: transparent; border: none; border-bottom: 2px solid transparent; font-size: 14px; font-weight: 400; cursor: pointer; color: var(--color-text-secondary);">Cài đặt<span id="queue-count" class="queue-badge" style="display:none;">0</span></button>
+  </div>
+
+  <div class="summary-grid" style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-bottom: 1.5rem;">
+    <div style="background: var(--color-background-secondary); border-radius: var(--border-radius-md); padding: 12px 14px;">
+      <p style="font-size: 12px; color: var(--color-text-secondary); margin: 0 0 4px;">Tổng số dư</p>
+      <p id="sum-balance" style="font-size: 18px; font-weight: 500; margin: 0;">0 ₫</p>
+    </div>
+    <div style="background: var(--color-background-secondary); border-radius: var(--border-radius-md); padding: 12px 14px;">
+      <p style="font-size: 12px; color: var(--color-text-secondary); margin: 0 0 4px;">Thu tháng này</p>
+      <p id="sum-income" style="font-size: 18px; font-weight: 500; margin: 0; color: #0F6E56;">0 ₫</p>
+    </div>
+    <div style="background: var(--color-background-secondary); border-radius: var(--border-radius-md); padding: 12px 14px;">
+      <p style="font-size: 12px; color: var(--color-text-secondary); margin: 0 0 4px;">Chi tháng này</p>
+      <p id="sum-expense" style="font-size: 18px; font-weight: 500; margin: 0; color: #A32D2D;">0 ₫</p>
+    </div>
+  </div>
+
+  <div id="panel-nhap" class="panel">
+    <div style="background: var(--color-background-primary); border-radius: var(--border-radius-lg); border: 0.5px solid var(--color-border-tertiary); padding: 1.25rem;">
+      <div style="display: flex; gap: 8px; margin-bottom: 1rem;">
+        <button id="type-expense" style="flex: 1; padding: 12px; border: 0.5px solid var(--color-border-secondary); border-radius: var(--border-radius-md); background: #FCEBEB; color: #A32D2D; font-size: 14px; font-weight: 500; cursor: pointer;">Chi tiêu</button>
+        <button id="type-income" style="flex: 1; padding: 12px; border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-md); background: transparent; color: var(--color-text-secondary); font-size: 14px; cursor: pointer;">Thu nhập</button>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
+        <div>
+          <label style="display: block; font-size: 12px; color: var(--color-text-secondary); margin-bottom: 4px;">Số tiền (VND)</label>
+          <input type="number" inputmode="numeric" id="amount" placeholder="0" style="width: 100%;" />
+        </div>
+        <div>
+          <label style="display: block; font-size: 12px; color: var(--color-text-secondary); margin-bottom: 4px;">Ngày</label>
+          <input type="date" id="date" style="width: 100%;" />
+        </div>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
+        <div>
+          <label style="display: block; font-size: 12px; color: var(--color-text-secondary); margin-bottom: 4px;">Danh mục</label>
+          <select id="category" style="width: 100%;"></select>
+        </div>
+        <div>
+          <label style="display: block; font-size: 12px; color: var(--color-text-secondary); margin-bottom: 4px;">Ví</label>
+          <select id="wallet" style="width: 100%;"></select>
+        </div>
+      </div>
+
+      <div style="margin-bottom: 1rem;">
+        <label style="display: block; font-size: 12px; color: var(--color-text-secondary); margin-bottom: 4px;">Ghi chú</label>
+        <input type="text" id="note" placeholder="VD: Ăn trưa với khách hàng" style="width: 100%;" />
+      </div>
+
+      <button id="save-btn" style="width: 100%; padding: 14px; background: var(--color-text-primary); color: var(--color-background-primary); border: none; border-radius: var(--border-radius-md); font-size: 15px; font-weight: 500; cursor: pointer;">Lưu giao dịch</button>
+      <div id="sync-status" style="font-size: 12px; color: var(--color-text-tertiary); text-align: center; margin-top: 10px; min-height: 16px;">Chưa kết nối Sheet</div>
+    </div>
+  </div>
+
+  <div id="panel-lichsu" class="panel" style="display: none;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+      <p style="font-size: 14px; font-weight: 500; margin: 0;">Giao dịch gần đây</p>
+      <button id="export-csv" style="font-size: 13px;">Xuất CSV</button>
+    </div>
+    <div id="history-list"></div>
+  </div>
+
+  <div id="panel-vi" class="panel" style="display: none;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+      <p style="font-size: 14px; font-weight: 500; margin: 0;">Danh sách ví</p>
+      <button id="add-wallet-btn" style="font-size: 13px;">+ Thêm ví</button>
+    </div>
+    <div id="wallet-list"></div>
+  </div>
+
+  <div id="panel-caidat" class="panel" style="display: none;">
+    <div style="background: var(--color-background-primary); border-radius: var(--border-radius-lg); border: 0.5px solid var(--color-border-tertiary); padding: 1.25rem; margin-bottom: 12px;">
+      <p style="font-size: 14px; font-weight: 500; margin: 0 0 8px;">Kết nối Google Sheet</p>
+      <p style="font-size: 13px; color: var(--color-text-secondary); margin: 0 0 16px; line-height: 1.6;">URL Apps Script Web App. Khi mở app, dữ liệu từ Sheet sẽ được kéo về tự động để đồng bộ đa thiết bị.</p>
+      <label style="display: block; font-size: 13px; color: var(--color-text-secondary); margin-bottom: 6px;">Apps Script Web App URL</label>
+      <input type="text" id="sheet-url" placeholder="https://script.google.com/macros/s/.../exec" style="width: 100%; margin-bottom: 12px;" />
+      <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+        <button id="save-url" style="padding: 10px 16px; background: var(--color-text-primary); color: var(--color-background-primary); border: none; border-radius: var(--border-radius-md); font-size: 13px; font-weight: 500; cursor: pointer;">Lưu URL</button>
+        <button id="test-url" style="padding: 10px 16px; font-size: 13px;">Kiểm tra kết nối</button>
+        <button id="flush-queue" style="padding: 10px 16px; font-size: 13px;">Đồng bộ hàng đợi</button>
+      </div>
+      <p id="test-result" style="font-size: 13px; margin: 12px 0 0; line-height: 1.5; white-space: pre-wrap;"></p>
+    </div>
+
+    <div style="background: var(--color-background-primary); border-radius: var(--border-radius-lg); border: 0.5px solid var(--color-border-tertiary); padding: 1.25rem;">
+      <p style="font-size: 14px; font-weight: 500; margin: 0 0 8px;">Hàng đợi đồng bộ</p>
+      <p style="font-size: 13px; color: var(--color-text-secondary); margin: 0 0 12px; line-height: 1.6;">Giao dịch chưa ghi được sang Sheet sẽ nằm ở đây và tự động retry.</p>
+      <div id="queue-list"></div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+(function(){
+  const fmt = n => new Intl.NumberFormat('vi-VN').format(Math.round(n)) + ' ₫';
+  const today = () => new Date().toISOString().slice(0,10);
+
+  const defaultCategories = {
+    expense: ['Ăn uống','Di chuyển','Mua sắm','Hóa đơn','Giải trí','Sức khỏe','Giáo dục','Gia đình','Công việc','Khác'],
+    income: ['Lương','Thưởng','Kinh doanh','Đầu tư','Quà tặng','Khác']
+  };
+  const defaultWallets = [{name:'Tiền mặt'},{name:'Ngân hàng'},{name:'Ví điện tử'}];
+
+  let state = {
+    type: 'expense',
+    transactions: [],
+    wallets: [...defaultWallets],
+    sheetUrl: '',
+    queue: [],
+    lastPull: 0
+  };
+
+  function load(){
+    try{ const t = localStorage.getItem('mm:transactions'); if(t) state.transactions = JSON.parse(t); }catch(e){}
+    try{ const w = localStorage.getItem('mm:wallets'); if(w) state.wallets = JSON.parse(w); }catch(e){}
+    try{ const u = localStorage.getItem('mm:sheetUrl'); if(u) state.sheetUrl = u; }catch(e){}
+    try{ const q = localStorage.getItem('mm:queue'); if(q) state.queue = JSON.parse(q); }catch(e){}
+    try{ const l = localStorage.getItem('mm:lastPull'); if(l) state.lastPull = parseInt(l); }catch(e){}
+  }
+  function save(){
+    localStorage.setItem('mm:transactions', JSON.stringify(state.transactions));
+    localStorage.setItem('mm:wallets', JSON.stringify(state.wallets));
+    localStorage.setItem('mm:sheetUrl', state.sheetUrl || '');
+    localStorage.setItem('mm:queue', JSON.stringify(state.queue));
+    localStorage.setItem('mm:lastPull', String(state.lastPull || 0));
+  }
+
+  async function callSheet(action, payload = {}) {
+    if (!state.sheetUrl) return {ok: false, msg: 'Chưa có URL Sheet'};
+    const url = new URL(state.sheetUrl);
+    url.searchParams.set('action', action);
+    Object.keys(payload).forEach(k => {
+      url.searchParams.set(k, typeof payload[k] === 'string' ? payload[k] : JSON.stringify(payload[k]));
+    });
+    try {
+      const res = await fetch(url.toString(), {method: 'GET', redirect: 'follow'});
+      if (!res.ok) return {ok: false, msg: 'HTTP ' + res.status};
+      const text = await res.text();
+      try { return JSON.parse(text); }
+      catch(e) { return {ok: false, msg: 'Response không phải JSON: ' + text.slice(0, 120)}; }
+    } catch(e) {
+      return {ok: false, msg: e.message || 'Network error'};
+    }
+  }
+
+  // PULL: Lấy dữ liệu từ Sheet về, merge với local
+  // Strategy: Sheet là source-of-truth. Nhưng giao dịch trong queue (chưa kịp sync lên)
+  // phải giữ lại để lần sau sync, không bị mất.
+  async function pullFromSheet() {
+    const banner = document.getElementById('pull-banner');
+    const refreshBtn = document.getElementById('refresh-btn');
+    banner.style.display = 'flex';
+    banner.innerHTML = '<span>⟳</span> Đang tải dữ liệu từ Google Sheet...';
+    refreshBtn.classList.add('spinning');
+
+    const r = await callSheet('list');
+    refreshBtn.classList.remove('spinning');
+
+    if (!r.ok) {
+      banner.innerHTML = '<span style="color:#A32D2D;">⚠</span> Không tải được dữ liệu từ Sheet: ' + r.msg + ' — vẫn dùng bản cục bộ.';
+      setTimeout(() => { banner.style.display = 'none'; }, 5000);
+      return {ok: false};
+    }
+
+    // Parse rows from Sheet into transaction format
+    const sheetTxs = (r.rows || []).filter(row => row.id && row.id !== 'PING').map(row => ({
+      id: row.id,
+      ts: new Date(row.ts).getTime() || Date.now(),
+      date: typeof row.date === 'string' ? row.date : new Date(row.date).toISOString().slice(0,10),
+      type: row.type === 'Thu' ? 'income' : 'expense',
+      amount: Number(row.amount) || 0,
+      category: row.category || '',
+      wallet: row.wallet || '',
+      note: row.note || ''
+    }));
+
+    // Merge: Sheet wins for common IDs. Queue items (pending sync) are preserved.
+    const sheetIds = new Set(sheetTxs.map(t => t.id));
+    const queueIds = new Set(state.queue.map(t => t.id));
+    const localOnlyPending = state.transactions.filter(t => !sheetIds.has(t.id) && queueIds.has(t.id));
+
+    state.transactions = [...sheetTxs, ...localOnlyPending];
+    state.lastPull = Date.now();
+    save();
+    renderAll();
+
+    const pullTime = new Date().toLocaleTimeString('vi-VN');
+    banner.innerHTML = '<span style="color:#0F6E56;">✓</span> Đã đồng bộ ' + sheetTxs.length + ' giao dịch từ Sheet (' + pullTime + ')';
+    setTimeout(() => { banner.style.display = 'none'; }, 3000);
+    return {ok: true, count: sheetTxs.length};
+  }
+
+  async function syncTx(tx) {
+    return await callSheet('add', {tx: tx});
+  }
+
+  async function flushQueue() {
+    if (!state.sheetUrl || state.queue.length === 0) return {sent: 0, failed: 0};
+    let sent = 0, failed = 0;
+    const remaining = [];
+    for (const tx of state.queue) {
+      const r = await syncTx(tx);
+      if (r.ok) sent++;
+      else { failed++; remaining.push(tx); }
+    }
+    state.queue = remaining;
+    save();
+    updateQueueBadge();
+    renderQueue();
+    return {sent, failed};
+  }
+
+  function updateQueueBadge() {
+    const badge = document.getElementById('queue-count');
+    if (state.queue.length > 0) {
+      badge.textContent = state.queue.length;
+      badge.style.display = 'inline-block';
+    } else {
+      badge.style.display = 'none';
+    }
+  }
+
+  function renderQueue() {
+    const el = document.getElementById('queue-list');
+    if (state.queue.length === 0) {
+      el.innerHTML = '<p style="font-size: 13px; color: var(--color-text-tertiary); text-align: center; padding: 1rem 0;">Không có giao dịch đang chờ</p>';
+      return;
+    }
+    el.innerHTML = '';
+    state.queue.forEach(tx => {
+      const row = document.createElement('div');
+      row.style.cssText = 'font-size: 13px; padding: 6px 0; border-bottom: 0.5px solid var(--color-border-tertiary);';
+      row.textContent = `${tx.date} · ${tx.type === 'income' ? 'Thu' : 'Chi'} ${fmt(tx.amount)} · ${tx.category} · ${tx.wallet}`;
+      el.appendChild(row);
+    });
+  }
+
+  function renderCategories(){
+    const sel = document.getElementById('category');
+    sel.innerHTML = '';
+    defaultCategories[state.type].forEach(c => {
+      const o = document.createElement('option');
+      o.value = c; o.textContent = c;
+      sel.appendChild(o);
+    });
+  }
+
+  function renderWallets(){
+    const sel = document.getElementById('wallet');
+    sel.innerHTML = '';
+    state.wallets.forEach(w => {
+      const o = document.createElement('option');
+      o.value = w.name; o.textContent = w.name;
+      sel.appendChild(o);
+    });
+    const list = document.getElementById('wallet-list');
+    list.innerHTML = '';
+    state.wallets.forEach((w, i) => {
+      const bal = computeWalletBalance(w.name);
+      const card = document.createElement('div');
+      card.style.cssText = 'background: var(--color-background-primary); border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-md); padding: 12px 14px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;';
+      card.innerHTML = `
+        <div>
+          <p style="font-size: 14px; font-weight: 500; margin: 0;">${w.name}</p>
+          <p style="font-size: 13px; color: var(--color-text-secondary); margin: 2px 0 0;">Số dư: ${fmt(bal)}</p>
+        </div>
+        <button data-i="${i}" class="del-wallet" style="font-size: 12px; padding: 6px 10px;">Xoá</button>`;
+      list.appendChild(card);
+    });
+    list.querySelectorAll('.del-wallet').forEach(b => {
+      b.onclick = () => {
+        const i = parseInt(b.dataset.i);
+        if(state.wallets.length <= 1){ alert('Phải có ít nhất 1 ví'); return; }
+        state.wallets.splice(i,1);
+        save(); renderWallets(); renderSummary();
+      };
+    });
+  }
+
+  function computeWalletBalance(name){
+    return state.transactions
+      .filter(t => t.wallet === name)
+      .reduce((s,t) => s + (t.type === 'income' ? t.amount : -t.amount), 0);
+  }
+
+  function renderSummary(){
+    const total = state.transactions.reduce((s,t) => s + (t.type === 'income' ? t.amount : -t.amount), 0);
+    const now = new Date();
+    const ym = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
+    const monthTx = state.transactions.filter(t => t.date.startsWith(ym));
+    const income = monthTx.filter(t => t.type === 'income').reduce((s,t) => s + t.amount, 0);
+    const expense = monthTx.filter(t => t.type === 'expense').reduce((s,t) => s + t.amount, 0);
+    document.getElementById('sum-balance').textContent = fmt(total);
+    document.getElementById('sum-income').textContent = fmt(income);
+    document.getElementById('sum-expense').textContent = fmt(expense);
+  }
+
+  function renderHistory(){
+    const list = document.getElementById('history-list');
+    list.innerHTML = '';
+    if(state.transactions.length === 0){
+      list.innerHTML = '<p style="font-size: 13px; color: var(--color-text-tertiary); text-align: center; padding: 2rem;">Chưa có giao dịch nào</p>';
+      return;
+    }
+    const sorted = [...state.transactions].sort((a,b) => b.date.localeCompare(a.date) || b.ts - a.ts);
+    sorted.slice(0, 100).forEach(t => {
+      const row = document.createElement('div');
+      row.style.cssText = 'background: var(--color-background-primary); border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-md); padding: 10px 14px; margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center; gap: 8px;';
+      const color = t.type === 'income' ? '#0F6E56' : '#A32D2D';
+      const sign = t.type === 'income' ? '+' : '−';
+      row.innerHTML = `
+        <div style="min-width: 0; flex: 1;">
+          <p style="font-size: 14px; font-weight: 500; margin: 0;">${t.category} <span style="font-size: 12px; color: var(--color-text-tertiary); font-weight: 400;">· ${t.wallet}</span></p>
+          <p style="font-size: 12px; color: var(--color-text-secondary); margin: 2px 0 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${t.date}${t.note ? ' · ' + t.note : ''}</p>
+        </div>
+        <div style="display: flex; gap: 8px; align-items: center; flex-shrink: 0;">
+          <p style="font-size: 14px; font-weight: 500; margin: 0; color: ${color}; white-space: nowrap;">${sign} ${fmt(t.amount)}</p>
+          <button data-id="${t.id}" class="del-tx" style="font-size: 12px; padding: 4px 8px;">×</button>
+        </div>`;
+      list.appendChild(row);
+    });
+    list.querySelectorAll('.del-tx').forEach(b => {
+      b.onclick = async () => {
+        const id = b.dataset.id;
+        if(!confirm('Xoá giao dịch này? (Cả trên app và trên Sheet nếu đã đồng bộ)')) return;
+        state.transactions = state.transactions.filter(x => x.id !== id);
+        state.queue = state.queue.filter(x => x.id !== id);
+        save(); renderAll();
+        if (state.sheetUrl) {
+          const r = await callSheet('delete', {id});
+          if (!r.ok) console.warn('Xoá trên Sheet thất bại:', r.msg);
+        }
+      };
+    });
+  }
+
+  function renderAll(){
+    renderCategories(); renderWallets(); renderSummary(); renderHistory(); updateQueueBadge();
+  }
+
+  function switchTab(name){
+    document.querySelectorAll('.tab-btn').forEach(b => {
+      b.style.borderBottom = '2px solid transparent';
+      b.style.fontWeight = '400';
+      b.style.color = 'var(--color-text-secondary)';
+    });
+    document.querySelectorAll('.panel').forEach(p => p.style.display = 'none');
+    const btn = document.getElementById('tab-'+name);
+    btn.style.borderBottom = '2px solid var(--color-text-primary)';
+    btn.style.fontWeight = '500';
+    btn.style.color = 'var(--color-text-primary)';
+    document.getElementById('panel-'+name).style.display = 'block';
+  }
+
+  document.getElementById('type-expense').onclick = () => {
+    state.type = 'expense';
+    document.getElementById('type-expense').style.cssText = 'flex: 1; padding: 12px; border: 0.5px solid var(--color-border-secondary); border-radius: var(--border-radius-md); background: #FCEBEB; color: #A32D2D; font-size: 14px; font-weight: 500; cursor: pointer;';
+    document.getElementById('type-income').style.cssText = 'flex: 1; padding: 12px; border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-md); background: transparent; color: var(--color-text-secondary); font-size: 14px; cursor: pointer;';
+    renderCategories();
+  };
+  document.getElementById('type-income').onclick = () => {
+    state.type = 'income';
+    document.getElementById('type-income').style.cssText = 'flex: 1; padding: 12px; border: 0.5px solid var(--color-border-secondary); border-radius: var(--border-radius-md); background: #E1F5EE; color: #0F6E56; font-size: 14px; font-weight: 500; cursor: pointer;';
+    document.getElementById('type-expense').style.cssText = 'flex: 1; padding: 12px; border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-md); background: transparent; color: var(--color-text-secondary); font-size: 14px; cursor: pointer;';
+    renderCategories();
+  };
+
+  document.getElementById('tab-nhap').onclick = () => switchTab('nhap');
+  document.getElementById('tab-lichsu').onclick = () => { switchTab('lichsu'); renderHistory(); };
+  document.getElementById('tab-vi').onclick = () => { switchTab('vi'); renderWallets(); };
+  document.getElementById('tab-caidat').onclick = () => { switchTab('caidat'); renderQueue(); };
+
+  document.getElementById('refresh-btn').onclick = async () => {
+    if (!state.sheetUrl) {
+      alert('Chưa kết nối Google Sheet. Vào tab Cài đặt để thiết lập.');
+      return;
+    }
+    // Đồng bộ queue trước, rồi pull — tránh mất data trong queue
+    if (state.queue.length > 0) await flushQueue();
+    await pullFromSheet();
+  };
+
+  document.getElementById('save-btn').onclick = async () => {
+    const amount = parseFloat(document.getElementById('amount').value);
+    const date = document.getElementById('date').value || today();
+    const category = document.getElementById('category').value;
+    const wallet = document.getElementById('wallet').value;
+    const note = document.getElementById('note').value.trim();
+    if(!amount || amount <= 0){ alert('Vui lòng nhập số tiền hợp lệ'); return; }
+    const tx = {
+      id: 'tx_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
+      ts: Date.now(), type: state.type, amount, date, category, wallet, note
+    };
+    state.transactions.push(tx);
+    save();
+    renderAll();
+    document.getElementById('amount').value = '';
+    document.getElementById('note').value = '';
+
+    const statusEl = document.getElementById('sync-status');
+    if (!state.sheetUrl) {
+      statusEl.textContent = '✓ Đã lưu cục bộ';
+      statusEl.style.color = 'var(--color-text-secondary)';
+      return;
+    }
+    statusEl.textContent = 'Đang đồng bộ...';
+    statusEl.style.color = 'var(--color-text-tertiary)';
+    const r = await syncTx(tx);
+    if (r.ok) {
+      statusEl.textContent = '✓ Đã ghi Sheet' + (r.row ? ' (dòng ' + r.row + ')' : '');
+      statusEl.style.color = '#0F6E56';
+    } else {
+      state.queue.push(tx);
+      save();
+      updateQueueBadge();
+      statusEl.textContent = '⚠ Vào hàng đợi — sẽ thử lại khi có mạng';
+      statusEl.style.color = '#A32D2D';
+      console.warn('Sync failed:', r.msg);
+    }
+  };
+
+  document.getElementById('add-wallet-btn').onclick = () => {
+    const name = prompt('Tên ví mới:');
+    if(!name) return;
+    if(state.wallets.some(w => w.name === name)){ alert('Ví đã tồn tại'); return; }
+    state.wallets.push({name});
+    save(); renderWallets();
+  };
+
+  document.getElementById('save-url').onclick = () => {
+    state.sheetUrl = document.getElementById('sheet-url').value.trim();
+    save();
+    document.getElementById('test-result').textContent = '✓ Đã lưu URL. Nhấn "Kiểm tra kết nối" để xác nhận.';
+    document.getElementById('test-result').style.color = '#0F6E56';
+    document.getElementById('sync-status').textContent = state.sheetUrl ? 'Sẵn sàng đồng bộ' : 'Chưa kết nối Sheet';
+  };
+
+  document.getElementById('test-url').onclick = async () => {
+    const url = document.getElementById('sheet-url').value.trim();
+    const resultEl = document.getElementById('test-result');
+    if(!url){ resultEl.textContent = '⚠ Chưa nhập URL'; resultEl.style.color = '#A32D2D'; return; }
+    state.sheetUrl = url; save();
+    resultEl.textContent = 'Đang kiểm tra...';
+    resultEl.style.color = 'var(--color-text-secondary)';
+    const r = await callSheet('ping');
+    if (r.ok) {
+      resultEl.textContent = '✓ Kết nối thành công\nSheet: ' + (r.sheetName || '—') + '\nSố dòng hiện có: ' + (r.rows || 0);
+      resultEl.style.color = '#0F6E56';
+    } else {
+      resultEl.textContent = '⚠ Thất bại: ' + r.msg + '\n\nCheck list:\n• Đã re-deploy Apps Script với code mới?\n• Quyền truy cập = "Bất kỳ ai" (Anyone)?\n• Thử dán URL + "?action=ping" vào tab browser để test thủ công.';
+      resultEl.style.color = '#A32D2D';
+    }
+  };
+
+  document.getElementById('flush-queue').onclick = async () => {
+    const resultEl = document.getElementById('test-result');
+    if (state.queue.length === 0) { resultEl.textContent = 'Hàng đợi trống'; resultEl.style.color = 'var(--color-text-secondary)'; return; }
+    resultEl.textContent = 'Đang đồng bộ ' + state.queue.length + ' giao dịch...';
+    resultEl.style.color = 'var(--color-text-secondary)';
+    const r = await flushQueue();
+    resultEl.textContent = '✓ Thành công: ' + r.sent + ' · Thất bại: ' + r.failed;
+    resultEl.style.color = r.failed === 0 ? '#0F6E56' : '#A32D2D';
+  };
+
+  document.getElementById('export-csv').onclick = () => {
+    if(state.transactions.length === 0){ alert('Chưa có giao dịch'); return; }
+    const rows = [['ID','Ngày','Loại','Số tiền','Danh mục','Ví','Ghi chú']];
+    state.transactions.forEach(t => rows.push([t.id, t.date, t.type === 'income' ? 'Thu' : 'Chi', t.amount, t.category, t.wallet, t.note || '']));
+    const csv = '\ufeff' + rows.map(r => r.map(c => '"' + String(c).replace(/"/g,'""') + '"').join(',')).join('\n');
+    const blob = new Blob([csv], {type:'text/csv;charset=utf-8'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'giao-dich-' + today() + '.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // Init
+  load();
+  document.getElementById('date').value = today();
+  if(state.sheetUrl){
+    document.getElementById('sheet-url').value = state.sheetUrl;
+    document.getElementById('sync-status').textContent = 'Sẵn sàng đồng bộ';
+  }
+  renderAll();
+
+  // Auto-pull on open + flush queue
+  if (state.sheetUrl) {
+    setTimeout(async () => {
+      if (state.queue.length > 0) await flushQueue();
+      await pullFromSheet();
+    }, 500);
+  }
+})();
+</script>
+
+</body>
+</html>
