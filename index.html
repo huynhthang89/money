@@ -197,7 +197,7 @@
   <div id="panel-caidat" class="panel" style="display: none;">
     <div style="background: var(--color-background-primary); border-radius: var(--border-radius-lg); border: 0.5px solid var(--color-border-tertiary); padding: 1.25rem; margin-bottom: 12px;">
       <p style="font-size: 14px; font-weight: 500; margin: 0 0 8px;">Kết nối Google Sheet</p>
-      <p style="font-size: 13px; color: var(--color-text-secondary); margin: 0 0 16px; line-height: 1.6;">URL Apps Script Web App. Khi mở app, dữ liệu từ Sheet sẽ được kéo về tự động để đồng bộ đa thiết bị.</p>
+      <p style="font-size: 13px; color: var(--color-text-secondary); margin: 0 0 16px; line-height: 1.6;">URL Apps Script Web App. Khi mở app, dữ liệu giao dịch và ví từ Sheet sẽ được kéo về tự động.</p>
       <label style="display: block; font-size: 13px; color: var(--color-text-secondary); margin-bottom: 6px;">Apps Script Web App URL</label>
       <input type="text" id="sheet-url" placeholder="https://script.google.com/macros/s/.../exec" style="width: 100%; margin-bottom: 12px;" />
       <div style="display: flex; gap: 8px; flex-wrap: wrap;">
@@ -234,7 +234,7 @@
     wallets: [...defaultWallets],
     sheetUrl: '',
     queue: [],
-    lastPull: 0
+    walletsSeeded: false  // đánh dấu đã đẩy ví mặc định lên Sheet lần đầu chưa
   };
 
   function load(){
@@ -242,14 +242,14 @@
     try{ const w = localStorage.getItem('mm:wallets'); if(w) state.wallets = JSON.parse(w); }catch(e){}
     try{ const u = localStorage.getItem('mm:sheetUrl'); if(u) state.sheetUrl = u; }catch(e){}
     try{ const q = localStorage.getItem('mm:queue'); if(q) state.queue = JSON.parse(q); }catch(e){}
-    try{ const l = localStorage.getItem('mm:lastPull'); if(l) state.lastPull = parseInt(l); }catch(e){}
+    try{ state.walletsSeeded = localStorage.getItem('mm:walletsSeeded') === '1'; }catch(e){}
   }
   function save(){
     localStorage.setItem('mm:transactions', JSON.stringify(state.transactions));
     localStorage.setItem('mm:wallets', JSON.stringify(state.wallets));
     localStorage.setItem('mm:sheetUrl', state.sheetUrl || '');
     localStorage.setItem('mm:queue', JSON.stringify(state.queue));
-    localStorage.setItem('mm:lastPull', String(state.lastPull || 0));
+    localStorage.setItem('mm:walletsSeeded', state.walletsSeeded ? '1' : '0');
   }
 
   async function callSheet(action, payload = {}) {
@@ -270,9 +270,7 @@
     }
   }
 
-  // PULL: Lấy dữ liệu từ Sheet về, merge với local
-  // Strategy: Sheet là source-of-truth. Nhưng giao dịch trong queue (chưa kịp sync lên)
-  // phải giữ lại để lần sau sync, không bị mất.
+  // PULL transactions + wallets từ Sheet
   async function pullFromSheet() {
     const banner = document.getElementById('pull-banner');
     const refreshBtn = document.getElementById('refresh-btn');
@@ -280,17 +278,19 @@
     banner.innerHTML = '<span>⟳</span> Đang tải dữ liệu từ Google Sheet...';
     refreshBtn.classList.add('spinning');
 
-    const r = await callSheet('list');
+    // Pull transactions
+    const txRes = await callSheet('list');
+    // Pull wallets
+    const wRes = await callSheet('listWallets');
     refreshBtn.classList.remove('spinning');
 
-    if (!r.ok) {
-      banner.innerHTML = '<span style="color:#A32D2D;">⚠</span> Không tải được dữ liệu từ Sheet: ' + r.msg + ' — vẫn dùng bản cục bộ.';
+    if (!txRes.ok) {
+      banner.innerHTML = '<span style="color:#A32D2D;">⚠</span> Không tải được giao dịch: ' + txRes.msg;
       setTimeout(() => { banner.style.display = 'none'; }, 5000);
       return {ok: false};
     }
 
-    // Parse rows from Sheet into transaction format
-    const sheetTxs = (r.rows || []).filter(row => row.id && row.id !== 'PING').map(row => ({
+    const sheetTxs = (txRes.rows || []).filter(row => row.id && row.id !== 'PING').map(row => ({
       id: row.id,
       ts: new Date(row.ts).getTime() || Date.now(),
       date: typeof row.date === 'string' ? row.date : new Date(row.date).toISOString().slice(0,10),
@@ -301,20 +301,37 @@
       note: row.note || ''
     }));
 
-    // Merge: Sheet wins for common IDs. Queue items (pending sync) are preserved.
     const sheetIds = new Set(sheetTxs.map(t => t.id));
     const queueIds = new Set(state.queue.map(t => t.id));
     const localOnlyPending = state.transactions.filter(t => !sheetIds.has(t.id) && queueIds.has(t.id));
-
     state.transactions = [...sheetTxs, ...localOnlyPending];
-    state.lastPull = Date.now();
+
+    // Xử lý wallets
+    let walletMsg = '';
+    if (wRes.ok) {
+      const sheetWallets = wRes.wallets || [];
+      if (sheetWallets.length > 0) {
+        // Sheet đã có wallets → dùng làm source-of-truth
+        state.wallets = sheetWallets;
+        state.walletsSeeded = true;
+        walletMsg = ', ' + sheetWallets.length + ' ví';
+      } else if (!state.walletsSeeded) {
+        // Sheet trống wallets và chưa seed bao giờ → đẩy ví mặc định/local lên
+        for (const w of state.wallets) {
+          await callSheet('addWallet', {name: w.name});
+        }
+        state.walletsSeeded = true;
+        walletMsg = ', đã đẩy ' + state.wallets.length + ' ví lên Sheet';
+      }
+    }
+
     save();
     renderAll();
 
     const pullTime = new Date().toLocaleTimeString('vi-VN');
-    banner.innerHTML = '<span style="color:#0F6E56;">✓</span> Đã đồng bộ ' + sheetTxs.length + ' giao dịch từ Sheet (' + pullTime + ')';
+    banner.innerHTML = '<span style="color:#0F6E56;">✓</span> Đã đồng bộ ' + sheetTxs.length + ' giao dịch' + walletMsg + ' (' + pullTime + ')';
     setTimeout(() => { banner.style.display = 'none'; }, 3000);
-    return {ok: true, count: sheetTxs.length};
+    return {ok: true};
   }
 
   async function syncTx(tx) {
@@ -395,11 +412,17 @@
       list.appendChild(card);
     });
     list.querySelectorAll('.del-wallet').forEach(b => {
-      b.onclick = () => {
+      b.onclick = async () => {
         const i = parseInt(b.dataset.i);
         if(state.wallets.length <= 1){ alert('Phải có ít nhất 1 ví'); return; }
+        const removed = state.wallets[i];
+        if(!confirm('Xoá ví "' + removed.name + '"? (Cả trên app và Sheet. Giao dịch cũ vẫn giữ.)')) return;
         state.wallets.splice(i,1);
         save(); renderWallets(); renderSummary();
+        if (state.sheetUrl) {
+          const r = await callSheet('deleteWallet', {name: removed.name});
+          if (!r.ok) console.warn('Xoá ví trên Sheet thất bại:', r.msg);
+        }
       };
     });
   }
@@ -449,7 +472,7 @@
     list.querySelectorAll('.del-tx').forEach(b => {
       b.onclick = async () => {
         const id = b.dataset.id;
-        if(!confirm('Xoá giao dịch này? (Cả trên app và trên Sheet nếu đã đồng bộ)')) return;
+        if(!confirm('Xoá giao dịch này?')) return;
         state.transactions = state.transactions.filter(x => x.id !== id);
         state.queue = state.queue.filter(x => x.id !== id);
         save(); renderAll();
@@ -502,7 +525,6 @@
       alert('Chưa kết nối Google Sheet. Vào tab Cài đặt để thiết lập.');
       return;
     }
-    // Đồng bộ queue trước, rồi pull — tránh mất data trong queue
     if (state.queue.length > 0) await flushQueue();
     await pullFromSheet();
   };
@@ -546,12 +568,18 @@
     }
   };
 
-  document.getElementById('add-wallet-btn').onclick = () => {
+  document.getElementById('add-wallet-btn').onclick = async () => {
     const name = prompt('Tên ví mới:');
     if(!name) return;
-    if(state.wallets.some(w => w.name === name)){ alert('Ví đã tồn tại'); return; }
-    state.wallets.push({name});
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    if(state.wallets.some(w => w.name === trimmed)){ alert('Ví đã tồn tại'); return; }
+    state.wallets.push({name: trimmed});
     save(); renderWallets();
+    if (state.sheetUrl) {
+      const r = await callSheet('addWallet', {name: trimmed});
+      if (!r.ok) console.warn('Đẩy ví lên Sheet thất bại:', r.msg);
+    }
   };
 
   document.getElementById('save-url').onclick = () => {
@@ -571,10 +599,10 @@
     resultEl.style.color = 'var(--color-text-secondary)';
     const r = await callSheet('ping');
     if (r.ok) {
-      resultEl.textContent = '✓ Kết nối thành công\nSheet: ' + (r.sheetName || '—') + '\nSố dòng hiện có: ' + (r.rows || 0);
+      resultEl.textContent = '✓ Kết nối thành công\nSheet: ' + (r.sheetName || '—') + '\nSố dòng giao dịch: ' + (r.rows || 0);
       resultEl.style.color = '#0F6E56';
     } else {
-      resultEl.textContent = '⚠ Thất bại: ' + r.msg + '\n\nCheck list:\n• Đã re-deploy Apps Script với code mới?\n• Quyền truy cập = "Bất kỳ ai" (Anyone)?\n• Thử dán URL + "?action=ping" vào tab browser để test thủ công.';
+      resultEl.textContent = '⚠ Thất bại: ' + r.msg + '\n\nCheck list:\n• Đã re-deploy Apps Script với code mới (có actions wallet)?\n• Quyền truy cập = "Bất kỳ ai" (Anyone)?';
       resultEl.style.color = '#A32D2D';
     }
   };
@@ -602,7 +630,6 @@
     URL.revokeObjectURL(url);
   };
 
-  // Init
   load();
   document.getElementById('date').value = today();
   if(state.sheetUrl){
@@ -611,7 +638,6 @@
   }
   renderAll();
 
-  // Auto-pull on open + flush queue
   if (state.sheetUrl) {
     setTimeout(async () => {
       if (state.queue.length > 0) await flushQueue();
